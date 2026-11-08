@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
-  ArrowDownToLine, Check, CheckCircle2, ChevronRight, CircleAlert,
+  ArrowDownToLine, Check, ChevronRight, CircleAlert,
   CircleHelp, CloudUpload, FileAudio2, FolderClosed, FolderOpen,
   HardDrive, ListMusic, Plus, Settings2, ShieldCheck, Sparkles, X,
 } from 'lucide-react';
@@ -100,7 +100,7 @@ export default function App() {
         </div>
 
         <div className="sidebar-navigation">
-          <div className="nav-label">WORKSPACE</div>
+          <div className="nav-label">WORKFLOW</div>
           <nav aria-label="Workspace navigation">
             {sections.map(({ id, label, Icon }) => (
               <NavItem key={id} label={label} Icon={Icon} active={section === id} onClick={() => { setError(null); setSection(id); }} />
@@ -119,25 +119,17 @@ export default function App() {
       </aside>
 
       <main className="main-area">
-        {section === 'organize' ? (
-          <div className="page-content">
-            <header className="page-heading">
-              <div>
-                <span className="overline">EXPORT WORKSPACE</span>
-                <h1>Organize</h1>
-                <p className="page-description">Everything ready for your next release.</p>
-              </div>
-              <button className="primary-button" type="button" disabled={busy} onClick={chooseFolders}>
-                <Plus size={17} aria-hidden="true" />{busy ? 'Scanning…' : 'Add folders'}
-              </button>
-            </header>
 
-            <div className="summary-strip" aria-label="Project summary">
-              <div className="summary-metric"><span>Projects</span><strong>{displayedFolders.length}</strong></div>
-              <div className="summary-metric"><span>Ready</span><strong>{ready}</strong></div>
-              <div className="summary-divider" />
-              <div className="summary-note"><ShieldCheck size={16} aria-hidden="true" /> Originals remain untouched</div>
-            </div>
+        {section === 'organize' ? (
+          <div className="page-content organize-page">
+            <header className="page-heading organize-heading">
+              <div>
+                <span className="overline">LOCAL WORKSPACE / 01</span>
+                <h1>Organize<span className="title-period">.</span></h1>
+                <p className="page-description">From projects to finished beats. Quietly, in the background.</p>
+              </div>
+              <div className="heading-caption"><span className="caption-led" /> Scan-only preview</div>
+            </header>
 
             {error && (
               <div className="error-banner" role="alert">
@@ -146,52 +138,75 @@ export default function App() {
               </div>
             )}
 
-            <section className="project-surface" aria-labelledby="project-heading">
-              <div className="surface-toolbar">
-                <div className="surface-title"><h2 id="project-heading">Beat projects</h2><span className="count-pill">{displayedFolders.length}</span></div>
-                {browserPreview && (
-                  <button type="button" className="quiet-button" onClick={() => setShowExamples((current) => !current)}>
-                    {showExamples ? 'Hide examples' : 'Show examples'}
-                  </button>
-                )}
-              </div>
-
-              {usingExamples && <div className="preview-notice"><span className="preview-mark" /> Sample projects for layout preview only — not files on your computer</div>}
-
-              {displayedFolders.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-art"><FolderClosed size={29} strokeWidth={1.4} /></div>
-                  <h3>No projects added</h3>
-                  <p>Choose folders containing FL Studio projects to start organizing your beats.</p>
-                  <button type="button" className="secondary-button" onClick={chooseFolders} disabled={busy}>
-                    <FolderOpen size={16} /> Select folders <ChevronRight size={15} />
-                  </button>
+            <div className="workspace-layout">
+              <section className="project-column" aria-labelledby="project-heading">
+                <div className="projects-topline">
+                  <div className="project-section-title">
+                    <h2 id="project-heading">Beat projects</h2>
+                    <span className="count-pill">{displayedFolders.length}</span>
+                  </div>
+                  {browserPreview && (
+                    <button type="button" className="quiet-button" onClick={() => setShowExamples((current) => !current)}>
+                      {showExamples ? 'Hide examples' : 'Show examples'}
+                    </button>
+                  )}
                 </div>
-              ) : (
-                <div className="project-list">
-                  <div className="list-header"><span>NAME</span><span>PROJECT FILE</span><span>STATUS</span><span /></div>
-                  {displayedFolders.map((beat) => (
-                    <div className="project-row" key={beat.folder}>
-                      <div className="project-identity">
-                        <div className="project-icon"><FileAudio2 size={18} strokeWidth={1.5} /></div>
-                        <div className="project-name-wrap"><strong title={beat.folderName}>{beat.folderName}</strong><span title={usingExamples ? 'Design example' : beat.folder}>{usingExamples ? 'Example beat' : beat.folder}</span></div>
-                      </div>
-                      <span className="project-file" title={beat.detail}>{beat.projectFile || beat.detail}</span>
-                      <span className={`project-state ${beat.state}`}><i aria-hidden="true" />{prettyState(beat.state)}</span>
-                      {usingExamples ? <span className="row-spacer" /> : (
-                        <button type="button" className="remove-button" aria-label={`Remove ${beat.folderName}`} title="Remove from list" onClick={() => setFolders((items) => items.filter((item) => item.folder !== beat.folder))}><X size={17} /></button>
-                      )}
+                <div className="project-surface">
+                  {usingExamples && <div className="preview-notice"><span className="preview-mark" /> Example projects for layout preview — no files loaded</div>}
+
+                  {displayedFolders.length === 0 ? (
+                    <div className="empty-state">
+                      <div className="empty-art"><FolderClosed size={25} strokeWidth={1.4} /></div>
+                      <h3>No projects yet</h3>
+                      <p>Choose your beat folders to prepare a batch for export.</p>
+                      <button type="button" className="secondary-button" onClick={chooseFolders} disabled={busy}>
+                        <FolderOpen size={16} /> Add beat folders <ChevronRight size={15} />
+                      </button>
                     </div>
-                  ))}
+                  ) : (
+                    <div className="project-list">
+                      <div className="list-header"><span>BEAT</span><span>FL STUDIO PROJECT</span><span>STATUS</span><span /></div>
+                      {displayedFolders.map((beat) => (
+                        <div className="project-row" key={beat.folder}>
+                          <div className="project-identity">
+                            <div className="project-icon"><FileAudio2 size={15} strokeWidth={1.65} /></div>
+                            <div className="project-name-wrap"><strong title={beat.folderName}>{beat.folderName}</strong></div>
+                          </div>
+                          <span className="project-file" title={beat.projectFile || beat.detail}>{beat.projectFile || beat.detail}</span>
+                          <span className={'project-state ' + beat.state}><i aria-hidden="true" />{prettyState(beat.state)}</span>
+                          {usingExamples ? <span className="row-spacer" /> : (
+                            <button type="button" className="remove-button" aria-label={'Remove ' + beat.folderName} title="Remove from list" onClick={() => setFolders((items) => items.filter((item) => item.folder !== beat.folder))}><X size={15} /></button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </section>
+                <div className="project-footer-note"><ShieldCheck size={14} /><span>Original FLP projects are never modified.</span></div>
+              </section>
 
-            <div className="action-dock">
-              <div className="action-copy"><div className="action-copy-icon"><CheckCircle2 size={17} /></div><div><strong>{usingExamples ? 'Preview mode' : `${ready} of ${folders.length} ready`}</strong><span>{usingExamples ? 'Example projects cannot be exported.' : 'Export becomes available after the renderer is validated.'}</span></div></div>
-              <button type="button" className="export-button" disabled title="Invisible batch exporting is not enabled yet"><ArrowDownToLine size={17} /> Export all</button>
+              <aside className="export-panel" aria-label="Batch export controls">
+                <div className="export-panel-head"><div className="panel-overline">BATCH EXPORT</div><span className="panel-phase">ALPHA</span></div>
+                <div className="export-panel-summary">
+                  <div className="summary-stat"><strong>{ready}</strong><span> / {displayedFolders.length}</span></div>
+                  <span className="summary-stat-caption">Projects ready</span>
+                  <div className="queue-meter" aria-label={ready + ' of ' + displayedFolders.length + ' projects ready'}><span style={{ width: (displayedFolders.length ? (ready / displayedFolders.length) * 100 : 0) + '%' }} /></div>
+                </div>
+                <div className="export-panel-divider" />
+                <div className="export-steps">
+                  <div className="export-step"><span className="step-number">01</span><div><strong>Projects</strong><span>{usingExamples ? 'Showing sample projects' : folders.length + ' folders selected'}</span></div><Check size={15} /></div>
+                  <div className="export-step muted"><span className="step-number">02</span><div><strong>Render</strong><span>Invisible FL Studio export</span></div><span className="step-pending" /></div>
+                  <div className="export-step muted"><span className="step-number">03</span><div><strong>Organize</strong><span>Audio + Smart Rename</span></div><span className="step-pending" /></div>
+                </div>
+                <div className="export-panel-actions">
+                  <button className="primary-button" type="button" disabled={busy} onClick={chooseFolders}>
+                    <Plus size={17} aria-hidden="true" />{busy ? 'Scanning…' : 'Add folders'}
+                  </button>
+                  <button type="button" className="export-button" disabled title="Invisible batch exporting is not enabled yet"><ArrowDownToLine size={16} /> Export all <span className="button-caption">Soon</span></button>
+                </div>
+                <p className="export-panel-hint">Export will be enabled after the Rust engine passes validation.</p>
+              </aside>
             </div>
-            <p className="page-footnote">Local-first. Original FL Studio files are never modified during scanning.</p>
           </div>
         ) : section === 'upload' ? (
           <div className="page-content">
