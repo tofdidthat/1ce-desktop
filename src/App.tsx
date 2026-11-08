@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
-  ArrowDownToLine, Check, ChevronRight, CircleAlert,
-  CircleHelp, CloudUpload, FileAudio2, FolderClosed, FolderOpen,
+  ArrowDownToLine, Check, CircleAlert,
+  CircleHelp, CloudUpload, FileAudio2, FolderClosed,
   HardDrive, ListMusic, Plus, Settings2, ShieldCheck, Sparkles, X,
 } from 'lucide-react';
 
