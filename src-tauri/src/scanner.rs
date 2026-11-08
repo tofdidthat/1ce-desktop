@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use crate::{flp_metadata, naming};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,9 +14,15 @@ pub struct BeatFolder {
     pub project_count: usize,
     pub state: &'static str,
     pub detail: String,
+    pub bpm: Option<f64>,
+    pub bpm_source: Option<String>,
+    pub bpm_warning: Option<String>,
+    pub name_preview: Option<String>,
+    pub missing_key: bool,
+    pub needs_tempo_review: bool,
 }
 
-fn inspect_folder(path: &Path) -> BeatFolder {
+fn inspect_folder(path: &Path, template: &str) -> BeatFolder {
     let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
     let mut item = BeatFolder {
         folder: path.to_string_lossy().to_string(),
@@ -24,6 +31,12 @@ fn inspect_folder(path: &Path) -> BeatFolder {
         project_count: 0,
         state: "invalid",
         detail: String::new(),
+        bpm: None,
+        bpm_source: None,
+        bpm_warning: None,
+        name_preview: None,
+        missing_key: false,
+        needs_tempo_review: false,
     };
 
     // Do not follow symbolic links / junctions in the initial scanner.
@@ -72,7 +85,31 @@ fn inspect_folder(path: &Path) -> BeatFolder {
         1 => {
             item.state = "ready";
             item.project_file = projects[0].file_name().map(|x| x.to_string_lossy().to_string());
-            item.detail = "Project found · BPM/Key analysis coming next".into();
+            item.detail = "Project found · read-only BPM and naming preview".into();
+            match flp_metadata::read_flp_tempo(&projects[0]) {
+                Ok(metadata) => {
+                    item.bpm = Some(metadata.bpm);
+                    item.bpm_source = Some(metadata.source.into());
+                    item.needs_tempo_review = metadata.needs_tempo_review;
+                    if metadata.needs_tempo_review {
+                        item.bpm_warning = Some("Multiple tempo-setting events; review in FL Studio".into());
+                    }
+                }
+                Err(e) => { item.bpm_warning = Some(format!("Cannot read base BPM: {e}")); }
+            }
+            match naming::preview_title(&item.folder_name, item.bpm, None, template) {
+                Ok(preview) => {
+                    item.name_preview = Some(preview.proposed);
+                    item.missing_key = preview.missing_key;
+                    if preview.bpm_conflict {
+                        item.needs_tempo_review = true;
+                        item.bpm_warning = Some("BPM in title differs from FLP; manual review needed".into());
+                    }
+                }
+                Err(error) => {
+                    item.bpm_warning = Some(format!("Naming preview unavailable: {error}"));
+                }
+            }
         }
         _ => {
             item.state = "multiple";
@@ -83,13 +120,14 @@ fn inspect_folder(path: &Path) -> BeatFolder {
 }
 
 #[tauri::command]
-pub fn scan_beat_folders(paths: Vec<String>) -> Vec<BeatFolder> {
+pub fn scan_beat_folders(paths: Vec<String>, template: Option<String>) -> Vec<BeatFolder> {
+    let template = template.as_deref().unwrap_or(naming::DEFAULT_TEMPLATE);
     let mut seen = HashSet::new();
     paths
         .into_iter()
         .take(250)
         .filter(|p| seen.insert(p.to_lowercase()))
-        .map(|p| inspect_folder(Path::new(&p)))
+        .map(|p| inspect_folder(Path::new(&p), template))
         .collect()
 }
 
@@ -104,16 +142,38 @@ mod tests {
         let folder = std::env::temp_dir().join(format!("onece-scanner-{}-{}", std::process::id(), n));
         fs::create_dir(&folder).unwrap();
         fs::write(folder.join("beat.flp"), b"untouched").unwrap();
-        let item = inspect_folder(&folder);
+        let item = inspect_folder(&folder, naming::DEFAULT_TEMPLATE);
         assert_eq!(item.state, "ready");
         assert_eq!(item.project_count, 1);
+        assert!(item.bpm.is_none());
         assert_eq!(fs::read(folder.join("beat.flp")).unwrap(), b"untouched");
         fs::remove_dir_all(folder).unwrap();
     }
 
     #[test]
+    fn scan_reads_valid_flp_bpm_and_previews_name_without_writes() {
+        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let folder = std::env::temp_dir().join(format!("onece-bpm-{}-{} 145 @producer", std::process::id(), n));
+        fs::create_dir(&folder).unwrap();
+        let project = folder.join("beat.flp");
+        let mut data = b"FLhd".to_vec();
+        data.extend(6u32.to_le_bytes());
+        data.extend([0,0,1,0,96,0]);
+        data.extend(b"FLdt");
+        data.extend(5u32.to_le_bytes());
+        data.push(156);
+        data.extend(145_000u32.to_le_bytes());
+        fs::write(&project, &data).unwrap();
+        let item = inspect_folder(&folder, naming::DEFAULT_TEMPLATE);
+        assert_eq!(item.bpm, Some(145.0));
+        assert!(item.name_preview.as_ref().is_some_and(|n| n.contains("145")));
+        assert_eq!(fs::read(&project).unwrap(), data);
+        fs::remove_dir_all(folder).unwrap();
+    }
+
+    #[test]
     fn scan_reports_missing_folder() {
-        let item = inspect_folder(Path::new("this-path-should-not-exist-onece-2a17"));
+        let item = inspect_folder(Path::new("this-path-should-not-exist-onece-2a17"), naming::DEFAULT_TEMPLATE);
         assert_eq!(item.state, "invalid");
     }
 }
