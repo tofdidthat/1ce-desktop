@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 
 type Section = 'organize' | 'upload' | 'settings';
+type AudioFormat = 'wav' | 'mp3' | 'both';
 type ScanState = 'ready' | 'missing' | 'multiple' | 'invalid';
 type BeatFolder = {
   folder: string;
@@ -22,6 +23,8 @@ type BeatFolder = {
   namePreview?: string | null;
   missingKey?: boolean;
   needsTempoReview?: boolean;
+  displayName?: string;
+  keyHint?: string;
 };
 type AppStatus = { version: string; scanOnly: boolean; exportEngineReady: boolean };
 const defaultTemplate = '{name} {bpm} {key} {producer}';
@@ -29,9 +32,9 @@ const defaultTemplate = '{name} {bpm} {key} {producer}';
 const browserPreview = typeof window !== 'undefined' && !('__TAURI_INTERNALS__' in window);
 
 const sampleFolders: BeatFolder[] = [
-  { folder: 'preview/bigtruck', folderName: 'bigtruck 140 e @tofdidthat', projectFile: 'bigtruck 140 e @tofdidthat.flp', projectCount: 1, state: 'ready', detail: 'Example project' },
-  { folder: 'preview/sup', folderName: 'sup 140 f @tofdidthat', projectFile: 'sup 140 f @tofdidthat.flp', projectCount: 1, state: 'ready', detail: 'Example project' },
-  { folder: 'preview/spider', folderName: 'spider 140 f# @tofdidthat', projectFile: 'spider 140 f# @tofdidthat.flp', projectCount: 1, state: 'ready', detail: 'Example project' },
+  { folder: 'preview/bigtruck', folderName: 'bigtruck 140 e @tofdidthat', displayName: 'bigtruck', keyHint: 'E', bpm: 140, projectFile: 'bigtruck 140 e @tofdidthat.flp', projectCount: 1, state: 'ready', detail: 'Example project' },
+  { folder: 'preview/sup', folderName: 'sup 140 f @tofdidthat', displayName: 'sup', keyHint: 'F', bpm: 140, projectFile: 'sup 140 f @tofdidthat.flp', projectCount: 1, state: 'ready', detail: 'Example project' },
+  { folder: 'preview/spider', folderName: 'spider 140 f# @tofdidthat', displayName: 'spider', keyHint: 'F#', bpm: 140, projectFile: 'spider 140 f# @tofdidthat.flp', projectCount: 1, state: 'ready', detail: 'Example project' },
 ];
 
 const sections = [
@@ -68,6 +71,17 @@ export default function App() {
     catch { return defaultTemplate; }
   });
   const [templateDraft, setTemplateDraft] = useState(nameTemplate);
+  // Draft format/stems preferences are visual only until the Rust renderer is ready.
+  const [audioFormat, setAudioFormat] = useState<AudioFormat>(() => {
+    try {
+      const value = window.localStorage.getItem('onece.previewAudioFormat');
+      return value === 'wav' || value === 'mp3' || value === 'both' ? value : 'both';
+    } catch { return 'both'; }
+  });
+  const [includeStems, setIncludeStems] = useState(() => {
+    try { return window.localStorage.getItem('onece.previewStems') === 'true'; }
+    catch { return false; }
+  });
   const [templateMessage, setTemplateMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +96,13 @@ export default function App() {
   const usingExamples = browserPreview && showExamples && folders.length === 0;
   const displayedFolders = usingExamples ? sampleFolders : folders;
   const ready = useMemo(() => displayedFolders.filter((item) => item.state === 'ready').length, [displayedFolders]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('onece.previewAudioFormat', audioFormat);
+      window.localStorage.setItem('onece.previewStems', String(includeStems));
+    } catch { /* Storage may be unavailable in embedded previews. */ }
+  }, [audioFormat, includeStems]);
 
   async function chooseFolders() {
     if (browserPreview) {
@@ -178,73 +199,113 @@ export default function App() {
               </div>
             )}
 
-            <div className="workspace-layout">
-              <section className="project-column" aria-labelledby="project-heading">
-                <div className="projects-topline">
-                  <div className="project-section-title">
-                    <h2 id="project-heading">Beat projects</h2>
-                    <span className="count-pill">{displayedFolders.length}</span>
+            <div className="workspace-layout workspace-layout-inverted">
+              <section className="export-settings-panel" aria-labelledby="export-setup-heading">
+                <div className="setup-heading">
+                  <div>
+                    <span className="panel-overline">EXPORT CONFIGURATION</span>
+                    <h2 id="export-setup-heading">Export setup</h2>
+                    <p>Everything in one place before the batch starts.</p>
                   </div>
-                  {browserPreview && (
-                    <button type="button" className="quiet-button" onClick={() => setShowExamples((current) => !current)}>
-                      {showExamples ? 'Hide examples' : 'Show examples'}
-                    </button>
-                  )}
+                  <span className="setup-draft">Preview</span>
                 </div>
-                <div className="project-surface">
-                  {usingExamples && <div className="preview-notice"><span className="preview-mark" /> Example projects for layout preview — no files loaded</div>}
-
-                  {displayedFolders.length === 0 ? (
-                    <div className="empty-state">
-                      <div className="empty-art"><FolderClosed size={25} strokeWidth={1.4} /></div>
-                      <h3>No projects yet</h3>
-                      <p>Choose your beat folders to prepare a batch for export.</p>
-                      <button type="button" className="secondary-button" onClick={chooseFolders} disabled={busy}>
-                        <FolderOpen size={16} /> Add beat folders <ChevronRight size={15} />
-                      </button>
+                <div className="setup-fields">
+                  <div className="setup-field">
+                    <div className="setup-field-heading">
+                      <label id="format-label">Audio format</label>
+                      <span className="setup-field-hint">Output preset</span>
                     </div>
-                  ) : (
-                    <div className="project-list">
-                      <div className="list-header"><span>BEAT</span><span>FL STUDIO PROJECT</span><span>STATUS</span><span /></div>
-                      {displayedFolders.map((beat) => (
-                        <div className="project-row" key={beat.folder}>
-                          <div className="project-identity">
-                            <div className="project-icon"><FileAudio2 size={15} strokeWidth={1.65} /></div>
-                            <div className="project-name-wrap"><strong title={beat.folderName}>{beat.folderName}</strong></div>
-                          </div>
-                          <span className="project-file" title={beat.namePreview ? `Name preview: ${beat.namePreview}${beat.bpmWarning ? ` | ${beat.bpmWarning}` : ''}` : (beat.projectFile || beat.detail)}>{beat.bpm != null ? `${beat.bpm} BPM · ` : ''}{beat.projectFile || beat.detail}</span>
-                          <span className={`project-state ${beat.state}`}><i aria-hidden="true" />{prettyState(beat.state)}</span>
-                          {usingExamples ? <span className="row-spacer" /> : (
-                            <button type="button" className="remove-button" aria-label={`Remove ${beat.folderName}`} title="Remove from list" onClick={() => setFolders((items) => items.filter((item) => item.folder !== beat.folder))}><X size={15} /></button>
-                          )}
-                        </div>
+                    <div className="format-switch" role="group" aria-labelledby="format-label">
+                      {(['wav', 'mp3', 'both'] as const).map((option) => (
+                        <button key={option} type="button" aria-pressed={audioFormat === option} className={audioFormat === option ? 'selected' : ''} onClick={() => setAudioFormat(option)}>
+                          {option === 'both' ? 'WAV + MP3' : option.toUpperCase()}
+                        </button>
                       ))}
                     </div>
-                  )}
+                  </div>
+                  <div className="setup-field setup-stems-field">
+                    <div>
+                      <strong>Export stems</strong>
+                      <p>Include separated tracks with your mix.</p>
+                    </div>
+                    <button className="stems-switch" type="button" role="switch" aria-label="Include stems in export preferences" aria-checked={includeStems} onClick={() => setIncludeStems((current) => !current)}><span /></button>
+                  </div>
+                  <div className="setup-field">
+                    <div className="setup-field-heading">
+                      <label htmlFor="organize-template">Naming template</label>
+                      <span className="setup-field-hint">Read-only preview</span>
+                    </div>
+                    <div className="setup-template-control">
+                      <input id="organize-template" type="text" spellCheck={false} value={templateDraft} onChange={(event) => { setTemplateDraft(event.target.value); setTemplateMessage(null); }} />
+                      <button type="button" onClick={applyTemplate}>Save</button>
+                    </div>
+                    <p className="setup-token-hint">Use {'{name}'}, {'{bpm}'}, {'{key}'} and {'{producer}'}.</p>
+                    {templateMessage && <p className="setup-template-feedback" role="status">{templateMessage}</p>}
+                  </div>
+                  <div className="setup-field setup-location-field">
+                    <div>
+                      <strong>Output folder</strong>
+                      <p>Choose a destination when the renderer is ready.</p>
+                    </div>
+                    <span className="setup-later"><FolderClosed size={14} /> Coming soon</span>
+                  </div>
                 </div>
-                <div className="project-footer-note"><ShieldCheck size={14} /><span>Original FLP projects are never modified.</span></div>
+                <div className="setup-footer">
+                  <div className="setup-total">
+                    <div><strong>{ready}</strong><span> / {displayedFolders.length} ready</span></div>
+                    <p>{usingExamples ? 'Example projects · preview only' : 'Original FLPs remain untouched'}</p>
+                  </div>
+                  <button type="button" className="export-button" disabled title="Invisible batch exporting is not enabled yet">
+                    <ArrowDownToLine size={16} /> Export all <span className="button-caption">Soon</span>
+                  </button>
+                  <p className="setup-safety-note"><ShieldCheck size={14} /> Format and stems are draft preferences. No files are rendered or modified.</p>
+                </div>
               </section>
 
-              <aside className="export-panel" aria-label="Batch export controls">
-                <div className="export-panel-head"><div className="panel-overline">BATCH EXPORT</div><span className="panel-phase">ALPHA</span></div>
-                <div className="export-panel-summary">
-                  <div className="summary-stat"><strong>{ready}</strong><span> / {displayedFolders.length}</span></div>
-                  <span className="summary-stat-caption">Projects ready</span>
-                  <div className="queue-meter" aria-label={`${ready} of ${displayedFolders.length} projects ready`}><span style={{ width: `${displayedFolders.length ? (ready / displayedFolders.length) * 100 : 0}%` }} /></div>
+              <aside className="beat-queue-panel" aria-labelledby="beat-queue-heading">
+                <div className="queue-heading">
+                  <div className="queue-heading-title">
+                    <span className="panel-overline">YOUR PROJECTS</span>
+                    <h2 id="beat-queue-heading">Beat queue <span className="count-pill">{displayedFolders.length}</span></h2>
+                  </div>
+                  {browserPreview && <button type="button" className="quiet-button" onClick={() => setShowExamples((current) => !current)}>{showExamples ? 'Hide examples' : 'Show examples'}</button>}
                 </div>
-                <div className="export-panel-divider" />
-                <div className="export-steps">
-                  <div className="export-step"><span className="step-number">01</span><div><strong>Projects</strong><span>{usingExamples ? 'Showing sample projects' : `${folders.length} folders selected`}</span></div><Check size={15} /></div>
-                  <div className="export-step muted"><span className="step-number">02</span><div><strong>Render</strong><span>Invisible FL Studio export</span></div><span className="step-pending" /></div>
-                  <div className="export-step muted"><span className="step-number">03</span><div><strong>Organize</strong><span>Audio + Smart Rename</span></div><span className="step-pending" /></div>
+                {usingExamples && <div className="queue-preview-notice"><span className="preview-mark" /> Preview data, not local files</div>}
+                <div className="queue-list">
+                  {displayedFolders.length === 0 ? (
+                    <div className="queue-empty">
+                      <div className="empty-art"><FolderClosed size={23} strokeWidth={1.4} /></div>
+                      <strong>No beats added</strong>
+                      <span>Choose folders with FL Studio projects.</span>
+                    </div>
+                  ) : displayedFolders.map((beat, index) => (
+                    <div className="queue-row" key={beat.folder}>
+                      <div className="queue-file-symbol"><FileAudio2 size={16} strokeWidth={1.6} /></div>
+                      <div className="queue-item-content">
+                        <div className="queue-item-top">
+                          <strong title={beat.folderName}>{beat.displayName || beat.folderName}</strong>
+                          <span className={'queue-status-dot ' + beat.state} title={prettyState(beat.state)} />
+                        </div>
+                        <span className="queue-meta" title={beat.projectFile || beat.detail}>
+                          {beat.bpm != null ? String(beat.bpm) + ' BPM' : 'BPM pending'}
+                          <span className="queue-meta-separator">·</span>
+                          {beat.keyHint || (beat.missingKey === false ? 'Key in title' : 'Key to review')}
+                        </span>
+                        {beat.needsTempoReview && <span className="queue-review-note">Review tempo mismatch</span>}
+                      </div>
+                      {usingExamples ? <span className="queue-index">{String(index + 1).padStart(2, '0')}</span> : (
+                        <button type="button" className="remove-button" aria-label={'Remove ' + beat.folderName} title="Remove from queue" onClick={() => setFolders((items) => items.filter((item) => item.folder !== beat.folder))}><X size={15} /></button>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                <div className="export-panel-actions">
+                <div className="queue-footer">
+                  <div className="queue-count"><span className="queue-count-dot" /> {ready} of {displayedFolders.length} projects ready</div>
                   <button className="primary-button" type="button" disabled={busy} onClick={chooseFolders}>
-                    <Plus size={17} aria-hidden="true" />{busy ? 'Scanning…' : 'Add folders'}
+                    <Plus size={16} aria-hidden="true" />{busy ? 'Scanning…' : 'Add folders'}
                   </button>
-                  <button type="button" className="export-button" disabled title="Invisible batch exporting is not enabled yet"><ArrowDownToLine size={16} /> Export all <span className="button-caption">Soon</span></button>
+                  <p>{usingExamples ? 'Examples for layout review only.' : 'Folder scanning is read-only.'}</p>
                 </div>
-                <p className="export-panel-hint">Export will be enabled after the Rust engine passes validation.</p>
               </aside>
             </div>
           </div>
