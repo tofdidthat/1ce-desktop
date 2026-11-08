@@ -2,7 +2,7 @@
 
 The next generation of **1CE Desktop**, built with **Tauri 2 + Rust + React + TypeScript**. Native-first, Windows-first and designed for music producers using FL Studio.
 
-**Current milestone:** foundation / safe read-only folder scanning. **This is not yet a replacement for the v0.1 exporter.**
+**Current milestone:** read-only FLP BPM and filename template previews. **This is not yet a replacement for the v0.1 exporter.**
 
 ## Product boundaries
 
@@ -28,8 +28,10 @@ npm run tauri dev
 
 - Interface for Organize / Upload / Settings, adapted to desktop dimensions, using the original 1CE logo.
 - Native multi-folder selection in Organize (Tauri dialog).
-- **Read-only** Rust scan of selected folders; one `.flp` at the top level is considered eligible for a future export task.
-- Remove selections in the interface. No state persisted yet, and no disk mutations.
+- **Read-only** Rust scan of selected folders; one `.flp` at the top level is eligible for metadata inspection.
+- Read-only Rust FLP base BPM parser, supporting modern event 156 and legacy events 66/93; malformed files and tempo discrepancies return warnings.
+- Configurable filename **previews** in Settings (`{name}`, `{bpm}`, `{key}`, `{producer}`). Existing metadata is preserved; no missing key is invented.
+- Remove folder selections in the interface. The filename template persists locally; selected folders are not yet persisted. No source file mutations.
 - Export button intentionally disabled until the invisible Rust renderer and file-safety suite are validated.
 
 ## Validated outside this repository
@@ -39,7 +41,7 @@ On the user's Windows workstation, the earlier scripts produced successful resul
 - FLP base tempo parsing: **140 BPM for all three** (event 156), matching folder titles; tempo automation not evaluated.
 - Windows hidden-desktop FL Studio rendering: **3/3 reported OK**, running sequentially without visible FL Studio windows.
 
-These were PowerShell proof-of-concept tests, **not a Rust implementation** and **not yet independent WAV/stem or key accuracy verification**.
+These were PowerShell proof-of-concept tests. The new Rust reader has synthetic unit tests, but must still be checked on those real FLPs on Windows; WAV/stem/key accuracy remain unverified.
 
 ## Documentation
 

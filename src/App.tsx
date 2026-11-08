@@ -16,8 +16,15 @@ type BeatFolder = {
   projectCount: number;
   state: ScanState;
   detail: string;
+  bpm?: number | null;
+  bpmSource?: string | null;
+  bpmWarning?: string | null;
+  namePreview?: string | null;
+  missingKey?: boolean;
+  needsTempoReview?: boolean;
 };
 type AppStatus = { version: string; scanOnly: boolean; exportEngineReady: boolean };
+const defaultTemplate = '{name} {bpm} {key} {producer}';
 
 const browserPreview = typeof window !== 'undefined' && !('__TAURI_INTERNALS__' in window);
 
@@ -56,6 +63,12 @@ export default function App() {
   const [section, setSection] = useState<Section>('organize');
   const [folders, setFolders] = useState<BeatFolder[]>([]);
   const [showExamples, setShowExamples] = useState(browserPreview);
+  const [nameTemplate, setNameTemplate] = useState(() => {
+    try { return window.localStorage.getItem('onece.filenameTemplate') || defaultTemplate; }
+    catch { return defaultTemplate; }
+  });
+  const [templateDraft, setTemplateDraft] = useState(nameTemplate);
+  const [templateMessage, setTemplateMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<AppStatus | null>(null);
@@ -82,12 +95,40 @@ export default function App() {
       if (!selection) return;
       const picked = Array.isArray(selection) ? selection : [selection];
       const paths = [...new Set([...folders.map((item) => item.folder), ...picked])];
-      const scanned = await invoke<BeatFolder[]>('scan_beat_folders', { paths });
+      const scanned = await invoke<BeatFolder[]>('scan_beat_folders', { paths, template: nameTemplate });
       setFolders(scanned);
     } catch (cause) {
       setError(`Couldn't open or scan folders. ${String(cause)}`);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function applyTemplate() {
+    const draft = templateDraft.trim();
+    const unsafe = '<>:"/\\|?*';
+    const outsideFields = draft.replace(/\{(?:name|bpm|key|producer)\}/g, '');
+    const foundFields = draft.match(/\{(?:name|bpm|key|producer)\}/g) || [];
+    if (!draft.includes('{name}') || draft.length > 200 ||
+      [...draft].some((char) => unsafe.includes(char) || char.charCodeAt(0) < 32) ||
+      outsideFields.includes('{') || outsideFields.includes('}') ||
+      new Set(foundFields).size !== foundFields.length) {
+      setTemplateMessage('Use {name}, {bpm}, {key} and {producer}. Avoid invalid filename characters.');
+      return;
+    }
+    try {
+      if (!browserPreview) {
+        await invoke('preview_beat_name', { title: 'test 140 e @producer', flpBpm: 140, detectedKey: null, template: draft });
+      }
+      window.localStorage.setItem('onece.filenameTemplate', draft);
+      setNameTemplate(draft);
+      setTemplateMessage(browserPreview ? 'Saved for visual preview. Native renaming is not enabled.' : 'Template saved; future folder scans will use it.');
+      if (!browserPreview && folders.length > 0) {
+        const scanned = await invoke<BeatFolder[]>('scan_beat_folders', { paths: folders.map((folder) => folder.folder), template: draft });
+        setFolders(scanned);
+      }
+    } catch (cause) {
+      setTemplateMessage(`Template rejected: ${String(cause)}`);
     }
   }
 
@@ -119,7 +160,6 @@ export default function App() {
       </aside>
 
       <main className="main-area">
-
         {section === 'organize' ? (
           <div className="page-content organize-page">
             <header className="page-heading organize-heading">
@@ -172,10 +212,10 @@ export default function App() {
                             <div className="project-icon"><FileAudio2 size={15} strokeWidth={1.65} /></div>
                             <div className="project-name-wrap"><strong title={beat.folderName}>{beat.folderName}</strong></div>
                           </div>
-                          <span className="project-file" title={beat.projectFile || beat.detail}>{beat.projectFile || beat.detail}</span>
-                          <span className={'project-state ' + beat.state}><i aria-hidden="true" />{prettyState(beat.state)}</span>
+                          <span className="project-file" title={beat.namePreview ? `Name preview: ${beat.namePreview}${beat.bpmWarning ? ` | ${beat.bpmWarning}` : ''}` : (beat.projectFile || beat.detail)}>{beat.bpm != null ? `${beat.bpm} BPM · ` : ''}{beat.projectFile || beat.detail}</span>
+                          <span className={`project-state ${beat.state}`}><i aria-hidden="true" />{prettyState(beat.state)}</span>
                           {usingExamples ? <span className="row-spacer" /> : (
-                            <button type="button" className="remove-button" aria-label={'Remove ' + beat.folderName} title="Remove from list" onClick={() => setFolders((items) => items.filter((item) => item.folder !== beat.folder))}><X size={15} /></button>
+                            <button type="button" className="remove-button" aria-label={`Remove ${beat.folderName}`} title="Remove from list" onClick={() => setFolders((items) => items.filter((item) => item.folder !== beat.folder))}><X size={15} /></button>
                           )}
                         </div>
                       ))}
@@ -190,11 +230,11 @@ export default function App() {
                 <div className="export-panel-summary">
                   <div className="summary-stat"><strong>{ready}</strong><span> / {displayedFolders.length}</span></div>
                   <span className="summary-stat-caption">Projects ready</span>
-                  <div className="queue-meter" aria-label={ready + ' of ' + displayedFolders.length + ' projects ready'}><span style={{ width: (displayedFolders.length ? (ready / displayedFolders.length) * 100 : 0) + '%' }} /></div>
+                  <div className="queue-meter" aria-label={`${ready} of ${displayedFolders.length} projects ready`}><span style={{ width: `${displayedFolders.length ? (ready / displayedFolders.length) * 100 : 0}%` }} /></div>
                 </div>
                 <div className="export-panel-divider" />
                 <div className="export-steps">
-                  <div className="export-step"><span className="step-number">01</span><div><strong>Projects</strong><span>{usingExamples ? 'Showing sample projects' : folders.length + ' folders selected'}</span></div><Check size={15} /></div>
+                  <div className="export-step"><span className="step-number">01</span><div><strong>Projects</strong><span>{usingExamples ? 'Showing sample projects' : `${folders.length} folders selected`}</span></div><Check size={15} /></div>
                   <div className="export-step muted"><span className="step-number">02</span><div><strong>Render</strong><span>Invisible FL Studio export</span></div><span className="step-pending" /></div>
                   <div className="export-step muted"><span className="step-number">03</span><div><strong>Organize</strong><span>Audio + Smart Rename</span></div><span className="step-pending" /></div>
                 </div>
@@ -222,7 +262,8 @@ export default function App() {
             <header className="page-heading"><div><span className="overline">YOUR PREFERENCES</span><h1>Settings</h1><p className="page-description">A few essentials for your desktop workflow.</p></div></header>
             <section className="settings-surface" aria-label="Desktop settings">
               <div className="setting-row"><div className="setting-icon"><HardDrive size={19} /></div><div className="setting-copy"><strong>FL Studio</strong><span>Configure the FL Studio executable when rendering is available.</span></div><span className="setting-state">Not configured</span></div>
-              <div className="setting-row"><div className="setting-icon"><Sparkles size={19} /></div><div className="setting-copy"><strong>Smart Rename</strong><span>Read BPM from FLP, then estimate musical key from the audio.</span></div><span className="setting-state">Planned</span></div>
+              <div className="setting-row"><div className="setting-icon"><Sparkles size={19} /></div><div className="setting-copy"><strong>Smart Rename</strong><span>Read BPM from FLP. Musical key detection is coming in a later stage.</span></div><span className="setting-state">Key planned</span></div>
+              <div className="setting-row template-setting"><div className="setting-icon"><FileAudio2 size={19} /></div><div className="setting-copy"><strong>Export filename template</strong><span>Only a read-only name preview for now. Variables: {`{name}`}, {`{bpm}`}, {`{key}`}, {`{producer}`}.</span><div className="template-editor"><input aria-label="Export filename template" type="text" value={templateDraft} onChange={(e) => setTemplateDraft(e.target.value)} spellCheck={false} /><button type="button" onClick={applyTemplate}>Save template</button></div>{templateMessage && <span role="status" className="template-feedback">{templateMessage}</span>}</div></div>
               <div className="setting-row"><div className="setting-icon"><CircleHelp size={19} /></div><div className="setting-copy"><strong>About 1CE Desktop</strong><span>{status?.version || '0.2.0-alpha.1'} · Windows-first · Local by design</span></div><span className="setting-state">Alpha</span></div>
             </section>
             <div className="info-note"><ShieldCheck size={17} /><span>This early version only scans folders. No audio or project files are modified.</span></div>
