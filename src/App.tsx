@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
-  ArrowDownToLine, ArrowRight, Check, CircleAlert, CircleHelp,
-  CirclePlus, Clock3, CloudUpload, Disc3, FileAudio2, FolderClosed,
-  FolderOpen, HardDrive, ListMusic, Music2,
-  Settings2, ShieldCheck, Sparkles, X,
+  ArrowDownToLine, Check, CheckCircle2, ChevronRight, CircleAlert,
+  CircleHelp, CloudUpload, FileAudio2, FolderClosed, FolderOpen,
+  HardDrive, ListMusic, Plus, Settings2, ShieldCheck, Sparkles, X,
 } from 'lucide-react';
 
 type Section = 'organize' | 'upload' | 'settings';
@@ -20,47 +19,62 @@ type BeatFolder = {
 };
 type AppStatus = { version: string; scanOnly: boolean; exportEngineReady: boolean };
 
+const browserPreview = typeof window !== 'undefined' && !('__TAURI_INTERNALS__' in window);
+
+const sampleFolders: BeatFolder[] = [
+  { folder: 'preview/bigtruck', folderName: 'bigtruck 140 e @tofdidthat', projectFile: 'bigtruck 140 e @tofdidthat.flp', projectCount: 1, state: 'ready', detail: 'Example project' },
+  { folder: 'preview/sup', folderName: 'sup 140 f @tofdidthat', projectFile: 'sup 140 f @tofdidthat.flp', projectCount: 1, state: 'ready', detail: 'Example project' },
+  { folder: 'preview/spider', folderName: 'spider 140 f# @tofdidthat', projectFile: 'spider 140 f# @tofdidthat.flp', projectCount: 1, state: 'ready', detail: 'Example project' },
+];
+
 const sections = [
   { id: 'organize', label: 'Organize', Icon: ListMusic },
   { id: 'upload', label: 'Upload', Icon: CloudUpload },
 ] as const;
-
-function MenuButton({ label, Icon, active, onClick }: {
-  label: string;
-  Icon: typeof ListMusic;
-  active?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button className={`nav-item ${active ? 'active' : ''}`} onClick={onClick} type="button">
-      <Icon size={18} strokeWidth={1.9} />
-      <span>{label}</span>
-      {active && <span className="nav-dot" />}
-    </button>
-  );
-}
 
 function prettyState(state: ScanState) {
   return state === 'ready' ? 'Ready' : state === 'missing' ? 'No FLP' :
     state === 'multiple' ? 'Multiple FLPs' : 'Invalid folder';
 }
 
+function NavItem({ label, Icon, active, onClick }: {
+  label: string;
+  Icon: typeof ListMusic;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" className={`nav-item${active ? ' active' : ''}`} onClick={onClick} aria-current={active ? 'page' : undefined} title={label}>
+      <Icon size={18} strokeWidth={1.85} aria-hidden="true" />
+      <span>{label}</span>
+      {active && <span className="nav-active-indicator" aria-hidden="true" />}
+    </button>
+  );
+}
+
 export default function App() {
   const [section, setSection] = useState<Section>('organize');
   const [folders, setFolders] = useState<BeatFolder[]>([]);
+  const [showExamples, setShowExamples] = useState(browserPreview);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<AppStatus | null>(null);
 
   useEffect(() => {
     invoke<AppStatus>('get_app_status').then(setStatus).catch(() => {
-      // Browser previews are visual-only: native features require Tauri.
+      // Browser is only a design preview. Native commands require Tauri.
     });
   }, []);
 
-  const ready = useMemo(() => folders.filter((item) => item.state === 'ready').length, [folders]);
+  const usingExamples = browserPreview && showExamples && folders.length === 0;
+  const displayedFolders = usingExamples ? sampleFolders : folders;
+  const ready = useMemo(() => displayedFolders.filter((item) => item.state === 'ready').length, [displayedFolders]);
 
   async function chooseFolders() {
+    if (browserPreview) {
+      setError('This is a browser design preview. Open the 1CE Desktop app to select folders from your computer.');
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
@@ -71,7 +85,7 @@ export default function App() {
       const scanned = await invoke<BeatFolder[]>('scan_beat_folders', { paths });
       setFolders(scanned);
     } catch (cause) {
-      setError(`Couldn't open or scan folders. ${String(cause)}. Use the desktop app for local file access.`);
+      setError(`Couldn't open or scan folders. ${String(cause)}`);
     } finally {
       setBusy(false);
     }
@@ -80,66 +94,126 @@ export default function App() {
   return (
     <div className="application">
       <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark"><img src="/logo.png" alt="1CE" /></div>
-          <div className="brand-copy"><span>Desktop</span></div>
+        <div className="brand" aria-label="1CE Desktop">
+          <div className="brand-mark"><img src="/logo.png" alt="1CE logo" /></div>
+          <span className="brand-name">Desktop</span>
         </div>
-        <div className="navigation-label">WORKSPACE</div>
-        <nav className="navigation" aria-label="Workspace">
-          {sections.map(({ id, label, Icon }) => (
-            <MenuButton key={id} label={label} Icon={Icon} active={section === id} onClick={() => setSection(id)} />
-          ))}
-        </nav>
+
+        <div className="sidebar-navigation">
+          <div className="nav-label">WORKSPACE</div>
+          <nav aria-label="Workspace navigation">
+            {sections.map(({ id, label, Icon }) => (
+              <NavItem key={id} label={label} Icon={Icon} active={section === id} onClick={() => { setError(null); setSection(id); }} />
+            ))}
+          </nav>
+        </div>
+
         <div className="sidebar-bottom">
-          <div className="help-card">
-            <div className="help-icon"><Sparkles size={18} /></div>
-            <strong>A better workflow.</strong>
-            <p>Export and organize beats, without leaving your creative space.</p>
+          <NavItem label="Settings" Icon={Settings2} active={section === 'settings'} onClick={() => { setError(null); setSection('settings'); }} />
+          <div className="sidebar-info">
+            <span className="service-dot" aria-hidden="true" />
+            <span>{status ? 'Rust connected' : 'Design preview'}</span>
+            <span className="sidebar-version">v0.2</span>
           </div>
-          <MenuButton label="Settings" Icon={Settings2} active={section === 'settings'} onClick={() => setSection('settings')} />
-          <div className="sidebar-version"><span className="status-circle" /> v0.2 · Alpha</div>
         </div>
       </aside>
 
       <main className="main-area">
         {section === 'organize' ? (
-          <div className="content">
-            <div className="heading-row">
-              <div><div className="eyebrow">YOUR WORKSPACE</div><h1>Organize your sound<span className="purple-stop">.</span></h1><p className="description">From FL Studio projects to a perfectly organized library.</p></div>
-              <div className="heading-actions"><span className="alpha-pill"><span className="alpha-dot" /> Scan-only alpha</span></div>
+          <div className="page-content">
+            <header className="page-heading">
+              <div>
+                <span className="overline">EXPORT WORKSPACE</span>
+                <h1>Organize</h1>
+                <p className="page-description">Everything ready for your next release.</p>
+              </div>
+              <button className="primary-button" type="button" disabled={busy} onClick={chooseFolders}>
+                <Plus size={17} aria-hidden="true" />{busy ? 'Scanning…' : 'Add folders'}
+              </button>
+            </header>
+
+            <div className="summary-strip" aria-label="Project summary">
+              <div className="summary-metric"><span>Projects</span><strong>{displayedFolders.length}</strong></div>
+              <div className="summary-metric"><span>Ready</span><strong>{ready}</strong></div>
+              <div className="summary-divider" />
+              <div className="summary-note"><ShieldCheck size={16} aria-hidden="true" /> Originals remain untouched</div>
             </div>
 
-            <section className="intro-card">
-              <div className="intro-copy"><span className="eyebrow light">1CE EXPORT</span><h2>Your creativity, uninterrupted.</h2><p>Prepare beat folders now. Invisible batch rendering, BPM and key detection will be enabled in the next development stages.</p><button type="button" onClick={chooseFolders} disabled={busy} className="primary-button"><FolderOpen size={17} /> {busy ? 'Scanning...' : 'Add beat folders'} <ArrowRight size={16} /></button></div>
-              <div className="intro-art" aria-hidden="true"><div className="disc-ring ring-one" /><div className="disc-ring ring-two" /><div className="disc-center"><Disc3 size={64} strokeWidth={0.8} /></div><span className="disc-glow" /></div>
-            </section>
-
-            <div className="section-heading"><div><h3>Beat folders <span className="item-count">{folders.length}</span></h3><p>Select folders containing a single FL Studio project.</p></div><button type="button" className="outline-button" onClick={chooseFolders} disabled={busy}><CirclePlus size={16} /> Add folders</button></div>
-
-            {error && <div className="error-banner" role="alert"><CircleAlert size={17} /> <span>{error}</span><button type="button" aria-label="Dismiss error" onClick={() => setError(null)}><X size={16} /></button></div>}
-            {folders.length === 0 ? (
-              <div className="empty-state"><div className="empty-icon"><FolderClosed size={31} strokeWidth={1.35} /></div><strong>No beat folders yet</strong><p>Add your folders to see which projects are ready for the export pipeline.</p><button className="text-button" type="button" onClick={chooseFolders} disabled={busy}>Choose folders <ArrowRight size={15} /></button></div>
-            ) : (
-              <div className="folder-list">
-                <div className="folder-table-head"><span>PROJECT</span><span>STATUS</span><span>FLP</span><span /></div>
-                {folders.map((beat) => (
-                  <div className="folder-row" key={beat.folder}>
-                    <div className="folder-main"><div className="folder-symbol"><Music2 size={17} /></div><div><strong>{beat.folderName}</strong><p title={beat.folder}>{beat.folder}</p></div></div>
-                    <span className={`folder-state ${beat.state}`}><span />{prettyState(beat.state)}</span>
-                    <span className="folder-file" title={beat.detail}>{beat.projectFile || beat.detail}</span>
-                    <button className="delete-button" type="button" aria-label={`Remove ${beat.folderName}`} onClick={() => setFolders((items) => items.filter((item) => item.folder !== beat.folder))}><X size={17} /></button>
-                  </div>
-                ))}
+            {error && (
+              <div className="error-banner" role="alert">
+                <CircleAlert size={17} /><span>{error}</span>
+                <button type="button" aria-label="Dismiss message" onClick={() => setError(null)}><X size={17} /></button>
               </div>
             )}
-            <div className="bottom-panel"><div className="bottom-panel-title"><div className="bottom-icon"><ShieldCheck size={18} /></div><div><strong>Safe by design</strong><p>Read-only inspection. Your original FLP projects remain untouched.</p></div></div><div className="bottom-right"><span>{ready} of {folders.length} ready</span><button className="disabled-export" type="button" disabled title="Invisible batch export will be added in a dedicated, Windows-validated stage"><ArrowDownToLine size={16} /> Export all <span className="coming-soon">Coming next</span></button></div></div>
+
+            <section className="project-surface" aria-labelledby="project-heading">
+              <div className="surface-toolbar">
+                <div className="surface-title"><h2 id="project-heading">Beat projects</h2><span className="count-pill">{displayedFolders.length}</span></div>
+                {browserPreview && (
+                  <button type="button" className="quiet-button" onClick={() => setShowExamples((current) => !current)}>
+                    {showExamples ? 'Hide examples' : 'Show examples'}
+                  </button>
+                )}
+              </div>
+
+              {usingExamples && <div className="preview-notice"><span className="preview-mark" /> Sample projects for layout preview only — not files on your computer</div>}
+
+              {displayedFolders.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-art"><FolderClosed size={29} strokeWidth={1.4} /></div>
+                  <h3>No projects added</h3>
+                  <p>Choose folders containing FL Studio projects to start organizing your beats.</p>
+                  <button type="button" className="secondary-button" onClick={chooseFolders} disabled={busy}>
+                    <FolderOpen size={16} /> Select folders <ChevronRight size={15} />
+                  </button>
+                </div>
+              ) : (
+                <div className="project-list">
+                  <div className="list-header"><span>NAME</span><span>PROJECT FILE</span><span>STATUS</span><span /></div>
+                  {displayedFolders.map((beat) => (
+                    <div className="project-row" key={beat.folder}>
+                      <div className="project-identity">
+                        <div className="project-icon"><FileAudio2 size={18} strokeWidth={1.5} /></div>
+                        <div className="project-name-wrap"><strong title={beat.folderName}>{beat.folderName}</strong><span title={usingExamples ? 'Design example' : beat.folder}>{usingExamples ? 'Example beat' : beat.folder}</span></div>
+                      </div>
+                      <span className="project-file" title={beat.detail}>{beat.projectFile || beat.detail}</span>
+                      <span className={`project-state ${beat.state}`}><i aria-hidden="true" />{prettyState(beat.state)}</span>
+                      {usingExamples ? <span className="row-spacer" /> : (
+                        <button type="button" className="remove-button" aria-label={`Remove ${beat.folderName}`} title="Remove from list" onClick={() => setFolders((items) => items.filter((item) => item.folder !== beat.folder))}><X size={17} /></button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <div className="action-dock">
+              <div className="action-copy"><div className="action-copy-icon"><CheckCircle2 size={17} /></div><div><strong>{usingExamples ? 'Preview mode' : `${ready} of ${folders.length} ready`}</strong><span>{usingExamples ? 'Example projects cannot be exported.' : 'Export becomes available after the renderer is validated.'}</span></div></div>
+              <button type="button" className="export-button" disabled title="Invisible batch exporting is not enabled yet"><ArrowDownToLine size={17} /> Export all</button>
+            </div>
+            <p className="page-footnote">Local-first. Original FL Studio files are never modified during scanning.</p>
           </div>
         ) : section === 'upload' ? (
-          <div className="content"><div className="eyebrow">YOUR WORKSPACE</div><h1>Upload<span className="purple-stop">.</span></h1><p className="description">Your local delivery queue, connected to 1CE.</p><div className="mode-header"><CloudUpload size={20} /><span>Upload mode</span><span className="alpha-pill">Planned</span></div><div className="feature-empty"><div className="feature-icon"><CloudUpload size={36} strokeWidth={1.3} /></div><h2>Publish from one place.</h2><p>This mode will send exported beats to the 1CE API. The website will manage publishing to destinations, delivery status and retries.</p><div className="planned-features"><span><Clock3 size={14} /> Persistent queue</span><span><Check size={14} /> Confirmed deliveries</span><span><HardDrive size={14} /> No duplicate storage</span></div></div></div>
+          <div className="page-content">
+            <header className="page-heading"><div><span className="overline">DELIVERY WORKSPACE</span><h1>Upload</h1><p className="page-description">One place to send your exports to 1CE.</p></div><span className="phase-chip">Coming later</span></header>
+            <section className="project-surface upload-surface">
+              <div className="surface-toolbar"><div className="surface-title"><h2>Transfer queue</h2><span className="count-pill">0</span></div><span className="surface-hint">Nothing queued</span></div>
+              <div className="empty-state upload-empty"><div className="empty-art"><CloudUpload size={30} strokeWidth={1.4} /></div><h3>Your queue is empty</h3><p>After export, send your beats to 1CE. The website will take care of publishing and delivery retries.</p></div>
+            </section>
+            <div className="info-note"><Check size={17} /><span>Uploads happen through the 1CE API. Social publishing stays on the website.</span></div>
+          </div>
         ) : (
-          <div className="content"><div className="eyebrow">PREFERENCES</div><h1>Settings<span className="purple-stop">.</span></h1><p className="description">Local application setup and future export preferences.</p><div className="settings-group"><div className="settings-item"><div className="setting-icon"><FileAudio2 size={21}/></div><div><strong>FL Studio executable</strong><p>Executable selection and validation will be added with the export engine.</p></div><span className="settings-value">Not configured</span></div><div className="settings-item"><div className="setting-icon"><Sparkles size={21}/></div><div><strong>Smart Rename</strong><p>Missing BPM from FLP; key analysis from rendered audio.</p></div><span className="settings-value">Planned</span></div><div className="settings-item"><div className="setting-icon"><CircleHelp size={21}/></div><div><strong>About</strong><p>1CE Desktop {status?.version || '0.2.0-alpha.1'} · Windows-first</p></div><span className="settings-value">Scan-only</span></div></div></div>
+          <div className="page-content">
+            <header className="page-heading"><div><span className="overline">YOUR PREFERENCES</span><h1>Settings</h1><p className="page-description">A few essentials for your desktop workflow.</p></div></header>
+            <section className="settings-surface" aria-label="Desktop settings">
+              <div className="setting-row"><div className="setting-icon"><HardDrive size={19} /></div><div className="setting-copy"><strong>FL Studio</strong><span>Configure the FL Studio executable when rendering is available.</span></div><span className="setting-state">Not configured</span></div>
+              <div className="setting-row"><div className="setting-icon"><Sparkles size={19} /></div><div className="setting-copy"><strong>Smart Rename</strong><span>Read BPM from FLP, then estimate musical key from the audio.</span></div><span className="setting-state">Planned</span></div>
+              <div className="setting-row"><div className="setting-icon"><CircleHelp size={19} /></div><div className="setting-copy"><strong>About 1CE Desktop</strong><span>{status?.version || '0.2.0-alpha.1'} · Windows-first · Local by design</span></div><span className="setting-state">Alpha</span></div>
+            </section>
+            <div className="info-note"><ShieldCheck size={17} /><span>This early version only scans folders. No audio or project files are modified.</span></div>
+          </div>
         )}
-        <footer className="footer"><span><span className="footer-led" /> {status ? 'Rust service connected' : 'Preview · desktop services unavailable'}</span><span>Made for producers <span className="footer-heart">✳</span> 1CE</span></footer>
+        <footer className="footer"><span>1CE Desktop <span className="footer-separator">·</span> Alpha</span><span>Made for producers</span></footer>
       </main>
     </div>
   );
