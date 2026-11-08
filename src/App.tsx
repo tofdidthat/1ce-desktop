@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
-  ArrowDownToLine, ArrowRight, Check, ChevronDown, CircleAlert, CircleHelp,
+  ArrowDownToLine, ArrowRight, Check, CircleAlert, CircleHelp,
   CirclePlus, Clock3, CloudUpload, Disc3, FileAudio2, FolderClosed,
-  FolderOpen, HardDrive, ListMusic, Music2, PanelLeft,
+  FolderOpen, HardDrive, ListMusic, Music2,
   Settings2, ShieldCheck, Sparkles, X,
 } from 'lucide-react';
 
@@ -82,8 +82,7 @@ export default function App() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark"><img src="/logo.png" alt="1CE" /></div>
-          <div className="brand-copy"><strong>1CE</strong><span>DESKTOP</span></div>
-          <PanelLeft size={17} className="sidebar-hint" />
+          <div className="brand-copy"><span>Desktop</span></div>
         </div>
         <div className="navigation-label">WORKSPACE</div>
         <nav className="navigation" aria-label="Workspace">
@@ -103,7 +102,6 @@ export default function App() {
       </aside>
 
       <main className="main-area">
-        <div className="window-bar"><div className="window-crumb">1CE Desktop <span>/</span> {section === 'organize' ? 'Organize' : section === 'upload' ? 'Upload' : 'Settings'}</div><div className="window-right"><span className="local-dot" /> Local workspace <ChevronDown size={13} /></div></div>
         {section === 'organize' ? (
           <div className="content">
             <div className="heading-row">
