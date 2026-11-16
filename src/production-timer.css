@@ -1,0 +1,101 @@
+html.timer-view,html.timer-view body,html.timer-view #root{width:100%;height:100%;min-width:0;overflow:hidden;background:#0e0e12}
+html.timer-view body,html.timer-view #root{margin:0}
+
+/* ---- compact tracker (horizontal card) ---- */
+.timer-popover{position:relative;width:100%;height:100%;min-width:0;box-sizing:border-box;overflow:hidden;display:grid;grid-template-columns:152px minmax(0,1fr);grid-template-rows:auto 27px minmax(0,1fr) auto;grid-template-areas:"head head" "clock kind" "clock metrics" "clock link";gap:6px 8px;padding:10px 11px 9px;color:#efeaf5;font-family:Inter,"Segoe UI",system-ui,sans-serif;background:radial-gradient(120% 90% at 82% -20%,rgba(186,158,232,.22),rgba(186,158,232,0) 65%),linear-gradient(180deg,#17161d 0%,#121116 55%,#0d0d11 100%);border:1px solid rgba(255,255,255,.07);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),inset 0 0 0 1px rgba(0,0,0,.25)}
+.timer-popover::before{content:"";position:absolute;top:0;left:16px;right:16px;height:1px;background:linear-gradient(90deg,rgba(190,160,235,0),rgba(214,196,240,.5),rgba(190,160,235,0));pointer-events:none}
+.timer-popover>*{min-width:0}
+.timer-popover button{font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+
+.timer-popover-head{grid-area:head;display:flex;align-items:center;justify-content:space-between;gap:4px}
+.timer-drag,.timer-popover-head strong{display:flex;align-items:center;gap:5px;flex:1;min-width:0;font-size:10px;font-weight:600;letter-spacing:.01em;white-space:nowrap;cursor:grab;user-select:none;color:#e6e0ee}
+.timer-drag:active{cursor:grabbing}
+.timer-live-dot{width:5px;height:5px;border-radius:50%;background:#5a5566;box-shadow:0 0 0 2px rgba(255,255,255,.04);flex-shrink:0;transition:background .2s}
+.timer-live-dot[data-state=running]{background:#b9f0d6;box-shadow:0 0 0 2px rgba(147,231,194,.16),0 0 8px rgba(147,231,194,.55)}
+.timer-live-dot[data-state=paused]{background:#f0c98a;box-shadow:0 0 0 2px rgba(240,201,138,.14)}
+
+.timer-window-actions{display:flex;gap:2px}
+.timer-window-actions button{display:grid;place-items:center;width:18px;height:20px;padding:0;border:0;border-radius:5px;background:transparent;color:#8a8596;transition:background .15s,color .15s}
+.timer-window-actions button:hover{background:rgba(255,255,255,.07);color:#ded7e8}
+.timer-window-actions button[aria-pressed=true]{color:#cbb6ea}
+
+.timer-kind{grid-area:kind;display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:2px;border-radius:8px;background:rgba(255,255,255,.035);box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),inset 0 1px 2px rgba(0,0,0,.45)}
+.timer-kind button{border:0;border-radius:6px;background:transparent;color:#7e7889;font-size:9px;font-weight:500;padding:5px 2px;letter-spacing:.02em;transition:color .15s,background .15s,box-shadow .15s}
+.timer-kind button:hover:not(:disabled):not(.selected){color:#b3adc0}
+.timer-kind button.selected{background:linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.045));color:#f2ecfa;box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 1px 2px rgba(0,0,0,.4)}
+.timer-kind button:disabled{cursor:default}
+
+.timer-clock{grid-area:clock;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:6px 4px;border-radius:9px;background:radial-gradient(90% 110% at 50% 0%,rgba(255,255,255,.045),rgba(255,255,255,0) 70%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.045)}
+.timer-clock>span{display:block;color:#8d8797;font-size:7px;font-weight:600;text-transform:uppercase;letter-spacing:.15em;white-space:nowrap}
+.timer-clock>strong{display:block;font-variant-numeric:tabular-nums;font-size:26px;line-height:1.05;font-weight:600;letter-spacing:-.045em;margin:3px 0 7px;white-space:nowrap;background:linear-gradient(180deg,#ffffff,#c3b6d8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 2px 10px rgba(178,148,224,.28))}
+.timer-clock>div{display:flex;justify-content:center;gap:5px}
+.timer-clock button{border:1px solid rgba(255,255,255,.1);border-radius:6px;background:rgba(255,255,255,.05);color:#cfc8da;font-size:9px;font-weight:500;padding:5px 10px;transition:background .15s,border-color .15s,transform .08s}
+.timer-clock button:hover:not(:disabled){background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.16)}
+.timer-clock button:active:not(:disabled){transform:translateY(1px)}
+.timer-clock button.timer-primary{background:linear-gradient(180deg,#e6dcf4,#c3aee0);border-color:rgba(255,255,255,.32);color:#1d1723;font-weight:600;box-shadow:0 2px 10px rgba(160,126,210,.3),inset 0 1px 0 rgba(255,255,255,.55)}
+.timer-clock button.timer-primary:hover{background:linear-gradient(180deg,#efe8fa,#cebce8)}
+.timer-clock button:disabled{opacity:.32;cursor:default}
+
+.timer-metrics{grid-area:metrics;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:5px;align-content:center}
+.timer-metrics section{min-width:0;display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:5px;border-radius:7px;background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));box-shadow:inset 0 0 0 1px rgba(255,255,255,.055)}
+.timer-metrics section>span{grid-column:1/-1;color:#7d7788;font-size:6px;font-weight:600;text-transform:uppercase;letter-spacing:.11em;white-space:nowrap;text-align:center}
+.timer-metrics p{display:flex;align-items:center;justify-content:center;gap:4px;margin:0;font-size:8px;color:#8f899b}
+.metric-dot{width:4px;height:4px;border-radius:50%;flex-shrink:0}
+.metric-dot.beat{background:#b6a5ca;box-shadow:0 0 5px rgba(182,165,202,.45)}
+.metric-dot.loop{background:#91b7a5;box-shadow:0 0 5px rgba(145,183,165,.4)}
+.timer-metrics b{font-variant-numeric:tabular-nums;font-size:12px;font-weight:600;color:#ddd5ea}
+
+.timer-popover .timer-records-link{grid-area:link;display:flex;align-items:center;justify-content:center;gap:4px;width:100%;min-height:20px;padding:3px 0 2px;border:1px solid rgba(255,255,255,.07);border-radius:6px;background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.012));color:#b6a5cb;font-size:8px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;transition:background .15s,color .15s,border-color .15s}
+.timer-popover .timer-records-link svg{opacity:.75;transition:transform .15s}
+.timer-popover .timer-records-link:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.14);color:#e0d4f0}
+.timer-popover .timer-records-link:hover svg{transform:translateX(2px)}
+.timer-error{font-size:8px;color:#e79aa4;margin:2px 0 0;text-align:center}
+
+.setting-icon-button{cursor:pointer;color:#cbb6ea;transition:background .15s,border-color .15s,transform .15s}
+.setting-icon-button:hover{background:#302a38;border-color:#756286;transform:translateY(-1px)}
+.quick-export-preferences{display:grid;grid-template-columns:minmax(240px,.85fr) minmax(0,1.4fr);gap:16px;margin:0;padding:18px 26px;border:0;border-bottom:1px solid #2d2e34;border-radius:0;background:transparent}
+.quick-template{display:flex;flex-direction:column;gap:7px;min-width:0}
+.quick-template>label,.quick-destinations>strong{font-size:11px;font-weight:650;color:#e9e4ef}
+.quick-template>span{font-size:9px;color:#898691}
+.quick-template .template-editor{margin-top:0}
+.quick-template .template-editor button{white-space:nowrap}
+.quick-destinations{display:flex;flex-direction:column;gap:5px;min-width:0}
+.quick-destinations>strong{margin-bottom:1px}
+.quick-destination{display:grid;grid-template-columns:74px minmax(0,1fr) auto;align-items:center;gap:8px;min-width:0}
+.quick-destination>span:first-child{font-size:9px;color:#aaa5b0}
+.quick-destination .destination-path{font-size:9px}
+.quick-destination .quiet-button{padding:5px 8px;font-size:9px}
+@media(max-width:900px){.quick-export-preferences{grid-template-columns:1fr}.quick-destinations{gap:7px}}
+
+/* ---- time tracker page ---- */
+.timer-history{padding:0 0 35px}
+.timer-history button,.timer-history input,.timer-history select{font:inherit}
+.timer-history-heading{align-items:center}.timer-history-heading>svg{color:#b9a7d0}.timer-history-summary{display:grid;grid-template-columns:38px 1fr 38px;align-items:center;border:1px solid #303139;background:#1c1d22;border-radius:10px;padding:13px;margin-bottom:14px}.timer-history-summary button{border:0;background:transparent;color:#a6a0ae}.timer-history-summary button:disabled{opacity:.25}.timer-history-summary div{text-align:center;display:flex;flex-direction:column;gap:5px}.timer-history-summary strong{font-size:12px}.timer-history-summary span{font-size:10px;color:#8c8994}
+.timer-manual-entry{display:grid;grid-template-columns:90px 135px 90px 1fr auto;gap:8px;border:1px solid #303139;background:#1c1d22;border-radius:10px;padding:12px;margin-bottom:14px}.timer-manual-entry input,.timer-manual-entry select{min-width:0;border:1px solid #3a3a43;background:#141519;color:#e5e2e9;border-radius:6px;padding:8px;font-size:10px}.timer-manual-entry button{display:flex;align-items:center;gap:5px;border:1px solid #51485c;background:#342f3c;color:#e4daed;border-radius:6px;padding:8px 11px;font-size:10px}
+.timer-history-list{border:1px solid #303139;background:#1c1d22;border-radius:10px;overflow:hidden}.timer-history-list>p{padding:32px;text-align:center;color:#85828e;font-size:11px}.timer-history-list article{display:flex;align-items:center;gap:11px;min-height:58px;padding:8px 13px;border-bottom:1px solid #2b2c32}.timer-history-list article:last-child{border-bottom:0}.timer-history-list article>i{width:7px;height:7px;border-radius:50%;background:#b6a5ca}.timer-history-list article>i.loop{background:#91b7a5}.timer-history-list article>div{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}.timer-history-list article strong{font-size:11px}.timer-history-list article span{font-size:9px;color:#898691;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.timer-history-list article button{border:0;background:transparent;color:#98949f;font-size:9px;padding:6px}
+.timer-history-heading>button{display:flex;align-items:center;gap:7px;border:1px solid #4a4352;background:#2e2a34;color:#d8cde4;border-radius:7px;padding:9px 12px;font-size:10px}
+@media(max-width:760px){.timer-manual-entry{grid-template-columns:1fr 1fr}.timer-manual-entry input[aria-label=Note]{grid-column:1/-1}}
+
+/* Use the same 1CE web surfaces and violet accent in the compact timer and history. */
+.timer-popover{color:#f5f3ff;background:#09080e;border-color:#ffffff10;box-shadow:inset 0 1px 0 #ffffff08}
+.timer-popover::before{background:linear-gradient(90deg,transparent,#a78bfa55,transparent)}
+.timer-kind{background:#ffffff08;box-shadow:inset 0 0 0 1px #ffffff0b,inset 0 1px 2px #0004}
+.timer-kind button.selected{background:#8b5cf626;color:#c4b5fd;box-shadow:inset 0 0 0 1px #8b5cf640}
+.timer-clock,.timer-metrics section,.timer-popover .timer-records-link{background:#ffffff05;box-shadow:inset 0 0 0 1px #ffffff0b}
+.timer-clock>strong{background:linear-gradient(180deg,#fff,#c4b5fd);-webkit-background-clip:text;background-clip:text}
+.timer-clock button.timer-primary{background:#7c3aed;border-color:#7c3aed;color:#fff;box-shadow:0 2px 10px #7c3aed40}
+.timer-clock button.timer-primary:hover{background:#6d28d9}
+.timer-popover .timer-records-link{border-color:#ffffff10;color:#c4b5fd}
+.timer-popover .timer-records-link:hover{background:#ffffff0b;border-color:#ffffff18;color:#f5f3ff}
+.timer-history-summary,.timer-manual-entry,.timer-history-list{background:#ffffff05;border-color:#ffffff0b}
+.timer-manual-entry input,.timer-manual-entry select{background:#15121d;border-color:#ffffff12;color:#f5f3ff}
+.timer-manual-entry button,.timer-history-heading>button{background:#7c3aed;border-color:#7c3aed;color:#fff}
+.timer-history-summary button,.timer-history-list article{border-color:#ffffff0b}
+html.timer-view,html.timer-view body,html.timer-view #root{background:#09080e}
+.timer-popover{border-radius:20px;background:#09080e;border-color:#ffffff0b}
+.timer-clock,.timer-metrics section,.timer-popover .timer-records-link{border-radius:12px;background:#ffffff06}
+.timer-metrics section{box-shadow:inset 0 0 0 1px #ffffff0b}
+.timer-clock button:not(.timer-primary){background:#ffffff08;border-color:#ffffff10;color:#f5f3ff}
+.timer-clock button:not(.timer-primary):hover:not(:disabled){background:#ffffff12}
+.timer-records-link{letter-spacing:.06em}
+.timer-history-summary,.timer-manual-entry,.timer-history-list{border-radius:16px;background:#ffffff06;border-color:#ffffff0b}

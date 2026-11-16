@@ -1,0 +1,11 @@
+{
+  "identifier": "production-timer-window",
+  "description": "Move and pin the compact timer.",
+  "windows": [
+    "production-timer"
+  ],
+  "permissions": [
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-always-on-top"
+  ]
+}

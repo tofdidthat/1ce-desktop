@@ -48,7 +48,9 @@ fn leb128<R: Read>(reader: &mut R, end: u64, pos: &mut u64) -> io::Result<u64> {
             return Ok(value);
         }
     }
-    Err(invalid("FLP variable event length uses more than five bytes"))
+    Err(invalid(
+        "FLP variable event length uses more than five bytes",
+    ))
 }
 
 /// Parse only the base tempo events in an FLP; the caller must treat tempo
@@ -76,7 +78,9 @@ pub fn parse_flp_tempo<R: Read + Seek>(reader: &mut R) -> io::Result<FlpTempo> {
     }
     let data_len = u64::from(read_u32(reader)?);
     let mut pos = 8u64 + header_len + 8;
-    let end = pos.checked_add(data_len).ok_or_else(|| invalid("FLdt size overflow"))?;
+    let end = pos
+        .checked_add(data_len)
+        .ok_or_else(|| invalid("FLdt size overflow"))?;
     if data_len == 0 || end > file_size {
         return Err(invalid("Invalid or truncated FLdt event block"));
     }
@@ -95,7 +99,9 @@ pub fn parse_flp_tempo<R: Read + Seek>(reader: &mut R) -> io::Result<FlpTempo> {
             128..=191 => 4u64,
             _ => leb128(reader, end, &mut pos)?,
         };
-        let next = pos.checked_add(len).ok_or_else(|| invalid("Event length overflow"))?;
+        let next = pos
+            .checked_add(len)
+            .ok_or_else(|| invalid("Event length overflow"))?;
         if next > end {
             return Err(invalid("FLP event extends beyond FLdt"));
         }
@@ -104,12 +110,16 @@ pub fn parse_flp_tempo<R: Read + Seek>(reader: &mut R) -> io::Result<FlpTempo> {
                 first_modern = Some(f64::from(read_u32(reader)?) / 1000.0);
                 tempo_events += 1;
             }
-            156 => { tempo_events += 1; },
+            156 => {
+                tempo_events += 1;
+            }
             66 if first_coarse.is_none() => {
                 first_coarse = Some(read_u16(reader)?);
                 tempo_events += 1;
             }
-            66 => { tempo_events += 1; },
+            66 => {
+                tempo_events += 1;
+            }
             93 if first_fine.is_none() => {
                 first_fine = Some(read_u16(reader)?);
             }
@@ -123,7 +133,10 @@ pub fn parse_flp_tempo<R: Read + Seek>(reader: &mut R) -> io::Result<FlpTempo> {
     let (bpm, source) = if let Some(modern) = first_modern {
         (modern, "modern-156")
     } else if let Some(coarse) = first_coarse {
-        (f64::from(coarse) + f64::from(first_fine.unwrap_or(0)) / 1000.0, "legacy-66-93")
+        (
+            f64::from(coarse) + f64::from(first_fine.unwrap_or(0)) / 1000.0,
+            "legacy-66-93",
+        )
     } else {
         return Err(invalid("No known FLP tempo event"));
     };
