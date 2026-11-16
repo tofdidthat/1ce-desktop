@@ -1,52 +1,67 @@
-# 1CE Desktop · v2
+# 1CE Desktop v2
 
-The next generation of **1CE Desktop**, built with **Tauri 2 + Rust + React + TypeScript**. Native-first, Windows-first and designed for music producers using FL Studio.
+Windows-first local workflow for FL Studio producers, built with Tauri 2, Rust, React and TypeScript.
 
-**Current milestone:** read-only FLP BPM and filename template previews. **This is not yet a replacement for the v0.1 exporter.**
+**Version: 0.2.0-alpha.1.** Local export and organization work; musical key detection is experimental. This is not a release-ready installer. Upload, licensing and automatic updates are not connected.
 
-## Product boundaries
+## Current workflow
 
-| Mode | This desktop app | 1CE website / API |
-| --- | --- | --- |
-| Organize | Locally render FLP beats, verify files, organize folders, and Smart Rename | Optional storage of uploaded library artifacts |
-| Upload | Queue files and transfer reliably to the 1CE API | Select and publish to social platforms, verify publishing, retry failed destinations |
+1. Drop project folders onto the Beat queue. The newest top-level `.flp` is selected by modification time; equal timestamps use a deterministic filename tie-breaker.
+2. Configure the naming template, FL executable and three destinations in Settings: MP3, Stems + master WAV, and Projects.
+3. Edit queue titles if needed. Smart Rename previews the name; **Rename** applies folder and selected-FLP names without per-beat confirmation. Other file contents are preserved.
+4. **Export** starts without a confirmation dialog. FL renders sequentially; local key analysis and delivery of a finished beat can overlap the next render.
+5. A usable key estimate replaces `{key}` automatically (`F#m`, `F#maj`). An inconclusive result pauses that beat; choose root/mode and **Export with this key** to finish the existing audio without rendering again.
+6. Final audio and project copies are verified before the source project folder is removed. Existing destination files are never overwritten.
 
-The desktop app never assumes responsibility for publishing directly to YouTube or other social networks. The web app owns downstream delivery status.
+The queue scrolls within its panel. Rename/Export remain visible. The exported counter counts verified final deliveries, not imported projects or analysis reaching 100%.
 
-## Start on Windows
+## Destinations and file safety
 
-Install **Node.js 22+**, **Rust stable** with MSVC toolchain, **Microsoft C++ Build Tools** and **WebView2** following the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). Run in PowerShell:
+- MP3: `<MP3 destination>/<final name>.mp3` when requested.
+- WAV/stems: `<Stems destination>/<final name>/`; master WAV and requested stems share this folder. No separate master directory.
+- Project: `<Projects destination>/<final name>/`, with the selected FLP named `<final name>.flp` and other assets preserved.
+- Empty top-level `stems` is omitted from delivered projects; populated stems are preserved. No `.1ce-owner` marker is generated in music folders.
+- Technical attempts and diagnostics live under `%LOCALAPPDATA%\1ce-desktop\exports`, outside music destinations.
+- Export **moves** the project after verifying destinations and the source snapshot. Standalone Rename changes source names without exporting.
+- Absolute sample references inside FLPs are not rewritten. Test reopening relocated projects; external samples may need relinking.
+
+## Recovery and internal cleanup
+
+Settings ? **Delivery recovery** opens private export records. Select the relevant `1ce-attempt-*` folder to verify or resume its saved paths. Old attempts in music destinations can be selected manually if compatible with current records.
+
+Interrupted publication can resume while source/configuration still match. Completed source moves can be verified again even after the source is gone. An interruption during source removal may leave `.1ce-moving-*`; preserve it and the `source-move.json` journal for manual inspection. Do not delete or re-export blindly.
+
+After verified source-move completion, only the manifest-checked private `render-input` copy is cleaned. Changed, extra or unmanifested files are retained. Diagnostics, verified processing audio and incomplete attempts are retained for recovery; there is no broad automatic cleanup of past attempts.
+
+## Development on Windows
+
+Install Node.js 22+, Rust/MSVC, Microsoft C++ Build Tools and WebView2. See [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ```powershell
 npm install --no-fund --no-audit
 npm run tauri dev
 ```
 
-`npm run dev` launches a **browser-only visual preview**; it cannot open native folder dialogs or scan local files. Native features require `npm run tauri dev`.
+Run only one development instance. Port 1420 is fixed; an existing Vite process must be identified before starting another. `npm run dev` alone is a browser preview without native file/export commands.
 
-## What actually works today
+```powershell
+npm run build
+cargo test --manifest-path src-tauri/Cargo.toml
+```
 
-- Interface for Organize / Upload / Settings, adapted to desktop dimensions, using the original 1CE logo.
-- Native multi-folder selection in Organize (Tauri dialog).
-- **Read-only** Rust scan of selected folders; one `.flp` at the top level is eligible for metadata inspection.
-- Read-only Rust FLP base BPM parser, supporting modern event 156 and legacy events 66/93; malformed files and tempo discrepancies return warnings.
-- Configurable filename **previews** in Settings (`{name}`, `{bpm}`, `{key}`, `{producer}`). Existing metadata is preserved; no missing key is invented.
-- Remove folder selections in the interface. The filename template persists locally; selected folders are not yet persisted. No source file mutations.
-- Export button intentionally disabled until the invisible Rust renderer and file-safety suite are validated.
+Real FL tests are ignored by default and require explicit disposable fixtures. Never run them against production music folders.
 
-## Validated outside this repository
+## Known limits
 
-On the user's Windows workstation, the earlier scripts produced successful results on `bigtruck`, `sup`, and `spider`:
-
-- FLP base tempo parsing: **140 BPM for all three** (event 156), matching folder titles; tempo automation not evaluated.
-- Windows hidden-desktop FL Studio rendering: **3/3 reported OK**, running sequentially without visible FL Studio windows.
-
-These were PowerShell proof-of-concept tests. The new Rust reader has synthetic unit tests, but must still be checked on those real FLPs on Windows; WAV/stem/key accuracy remain unverified.
+- Key estimates are uncalibrated. SPENDALL is reported by the user as D# minor; the detector previously returned A# major and currently remains inconclusive on that retained export. Do not treat estimates as certified musical truth.
+- FL/plugin compatibility, listening acceptance, power loss, cross-drive behavior and real-project sample references need broader validation.
+- Selected queue folders/jobs are not a persistent library. Internal journals support delivery recovery, not automatic restoration of the entire UI queue.
+- No network upload or social publishing is performed. The website/API will own downstream publishing.
+- Local development changes are not automatically a GitHub release or distributed installer.
 
 ## Documentation
 
-- [Development roadmap](docs/ROADMAP.md)
-- [Architecture and safety rules](docs/ARCHITECTURE.md)
-- [Git and release workflow](docs/WORKFLOW.md)
-
-Source migration reference: legacy v0.1 implementation from `codigo-fonte.zip` (C# Windows Forms). Source is intentionally **not committed wholesale** while the new modules are built and verified.
+- [Architecture and safety contract](docs/ARCHITECTURE.md)
+- [Roadmap and remaining gates](docs/ROADMAP.md)
+- [Development workflow](docs/WORKFLOW.md)
+- [Validation evidence](docs/VALIDATION.md)

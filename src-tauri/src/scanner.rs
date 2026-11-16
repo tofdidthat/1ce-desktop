@@ -1,9 +1,10 @@
 //! Read-only beat folder inspection. This module never creates, moves, or deletes files.
+use crate::{flp_metadata, naming};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use crate::{flp_metadata, naming};
+use std::time::SystemTime;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,8 +23,12 @@ pub struct BeatFolder {
     pub needs_tempo_review: bool,
 }
 
-fn inspect_folder(path: &Path, template: &str) -> BeatFolder {
-    let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+pub(crate) fn inspect_folder(path: &Path, template: &str) -> BeatFolder {
+    let name = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     let mut item = BeatFolder {
         folder: path.to_string_lossy().to_string(),
         folder_name: name,
@@ -52,7 +57,7 @@ fn inspect_folder(path: &Path, template: &str) -> BeatFolder {
         _ => {}
     }
 
-    let mut projects = Vec::<PathBuf>::new();
+    let mut projects = Vec::<(PathBuf, SystemTime)>::new();
     let entries = match fs::read_dir(path) {
         Ok(entries) => entries,
         Err(_) => {
@@ -66,54 +71,78 @@ fn inspect_folder(path: &Path, template: &str) -> BeatFolder {
             return item;
         };
         let p = entry.path();
-        if !p.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("flp")) {
+        if !p
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("flp"))
+        {
             continue;
         }
-        if let Ok(meta) = fs::symlink_metadata(&p) {
-            if meta.is_file() && !meta.file_type().is_symlink() {
-                projects.push(p);
+        let meta = match fs::symlink_metadata(&p) {
+            Ok(meta) => meta,
+            Err(_) => {
+                item.detail = "Unable to inspect a project file".into();
+                return item;
             }
+        };
+        if meta.is_file() && !meta.file_type().is_symlink() {
+            let modified = match meta.modified() {
+                Ok(time) => time,
+                Err(_) => {
+                    item.detail = "Unable to determine a project's modification date".into();
+                    return item;
+                }
+            };
+            projects.push((p, modified));
         }
     }
-    projects.sort();
+    // Most recently modified wins. Equal timestamps use the filename as a
+    // deterministic tie-breaker and are flagged for the user to review.
+    projects.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     item.project_count = projects.len();
-    match projects.len() {
-        0 => {
-            item.state = "missing";
-            item.detail = "No .flp in this folder's top level".into();
-        }
-        1 => {
-            item.state = "ready";
-            item.project_file = projects[0].file_name().map(|x| x.to_string_lossy().to_string());
-            item.detail = "Project found · read-only BPM and naming preview".into();
-            match flp_metadata::read_flp_tempo(&projects[0]) {
-                Ok(metadata) => {
-                    item.bpm = Some(metadata.bpm);
-                    item.bpm_source = Some(metadata.source.into());
-                    item.needs_tempo_review = metadata.needs_tempo_review;
-                    if metadata.needs_tempo_review {
-                        item.bpm_warning = Some("Multiple tempo-setting events; review in FL Studio".into());
-                    }
-                }
-                Err(e) => { item.bpm_warning = Some(format!("Cannot read base BPM: {e}")); }
-            }
-            match naming::preview_title(&item.folder_name, item.bpm, None, template) {
-                Ok(preview) => {
-                    item.name_preview = Some(preview.proposed);
-                    item.missing_key = preview.missing_key;
-                    if preview.bpm_conflict {
-                        item.needs_tempo_review = true;
-                        item.bpm_warning = Some("BPM in title differs from FLP; manual review needed".into());
-                    }
-                }
-                Err(error) => {
-                    item.bpm_warning = Some(format!("Naming preview unavailable: {error}"));
+    if projects.is_empty() {
+        item.state = "missing";
+        item.detail = "No .flp in this folder's top level".into();
+    } else {
+        let selected = &projects[0].0;
+        let tied = projects.len() > 1 && projects[0].1 == projects[1].1;
+        item.state = "ready";
+        item.project_file = selected
+            .file_name()
+            .map(|x| x.to_string_lossy().to_string());
+        item.detail = if tied {
+            "Projects share the newest modification date; review the selected file".into()
+        } else if projects.len() > 1 {
+            "Most recently modified project selected".into()
+        } else {
+            "Project found · read-only BPM and naming preview".into()
+        };
+        match flp_metadata::read_flp_tempo(selected) {
+            Ok(metadata) => {
+                item.bpm = Some(metadata.bpm);
+                item.bpm_source = Some(metadata.source.into());
+                item.needs_tempo_review = metadata.needs_tempo_review;
+                if metadata.needs_tempo_review {
+                    item.bpm_warning =
+                        Some("Multiple tempo-setting events; review in FL Studio".into());
                 }
             }
+            Err(e) => {
+                item.bpm_warning = Some(format!("Cannot read base BPM: {e}"));
+            }
         }
-        _ => {
-            item.state = "multiple";
-            item.detail = "Multiple .flp files; select a folder containing exactly one".into();
+        match naming::preview_title(&item.folder_name, item.bpm, None, template) {
+            Ok(preview) => {
+                item.name_preview = Some(preview.proposed);
+                item.missing_key = preview.missing_key;
+                if preview.bpm_conflict {
+                    item.needs_tempo_review = true;
+                    item.bpm_warning =
+                        Some("BPM in title differs from FLP; manual review needed".into());
+                }
+            }
+            Err(error) => {
+                item.bpm_warning = Some(format!("Naming preview unavailable: {error}"));
+            }
         }
     }
     item
@@ -138,8 +167,12 @@ mod tests {
 
     #[test]
     fn scan_detects_one_flp_without_touching_it() {
-        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let folder = std::env::temp_dir().join(format!("onece-scanner-{}-{}", std::process::id(), n));
+        let n = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let folder =
+            std::env::temp_dir().join(format!("onece-scanner-{}-{}", std::process::id(), n));
         fs::create_dir(&folder).unwrap();
         fs::write(folder.join("beat.flp"), b"untouched").unwrap();
         let item = inspect_folder(&folder, naming::DEFAULT_TEMPLATE);
@@ -151,14 +184,80 @@ mod tests {
     }
 
     #[test]
+    fn scan_chooses_newest_project_and_does_not_modify_either_file() {
+        let n = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let folder =
+            std::env::temp_dir().join(format!("onece-newest-{}-{}", std::process::id(), n));
+        fs::create_dir(&folder).unwrap();
+        let old = folder.join("old.flp");
+        let new = folder.join("new.flp");
+        fs::write(&old, b"old project").unwrap();
+        fs::write(&new, b"new project").unwrap();
+        let old_time = UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000);
+        let new_time = UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+        for (path, time) in [(&old, old_time), (&new, new_time)] {
+            fs::File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_times(fs::FileTimes::new().set_modified(time))
+                .unwrap();
+        }
+        let item = inspect_folder(&folder, naming::DEFAULT_TEMPLATE);
+        assert_eq!(item.state, "ready");
+        assert_eq!(item.project_count, 2);
+        assert_eq!(item.project_file.as_deref(), Some("new.flp"));
+        assert_eq!(fs::read(&old).unwrap(), b"old project");
+        assert_eq!(fs::read(&new).unwrap(), b"new project");
+        assert_eq!(fs::metadata(&old).unwrap().modified().unwrap(), old_time);
+        assert_eq!(fs::metadata(&new).unwrap().modified().unwrap(), new_time);
+        fs::remove_dir_all(folder).unwrap();
+    }
+
+    #[test]
+    fn equal_latest_timestamps_are_deterministic_and_reported() {
+        let n = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let folder = std::env::temp_dir().join(format!("onece-tie-{}-{}", std::process::id(), n));
+        fs::create_dir(&folder).unwrap();
+        let time = UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+        for name in ["b.flp", "a.flp"] {
+            let path = folder.join(name);
+            fs::write(&path, b"test").unwrap();
+            fs::File::options()
+                .write(true)
+                .open(&path)
+                .unwrap()
+                .set_times(fs::FileTimes::new().set_modified(time))
+                .unwrap();
+        }
+        let item = inspect_folder(&folder, naming::DEFAULT_TEMPLATE);
+        assert_eq!(item.project_file.as_deref(), Some("a.flp"));
+        assert!(item.detail.contains("share the newest modification date"));
+        fs::remove_dir_all(folder).unwrap();
+    }
+
+    #[test]
     fn scan_reads_valid_flp_bpm_and_previews_name_without_writes() {
-        let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let folder = std::env::temp_dir().join(format!("onece-bpm-{}-{} 145 @producer", std::process::id(), n));
+        let n = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let folder = std::env::temp_dir().join(format!(
+            "onece-bpm-{}-{} 145 @producer",
+            std::process::id(),
+            n
+        ));
         fs::create_dir(&folder).unwrap();
         let project = folder.join("beat.flp");
         let mut data = b"FLhd".to_vec();
         data.extend(6u32.to_le_bytes());
-        data.extend([0,0,1,0,96,0]);
+        data.extend([0, 0, 1, 0, 96, 0]);
         data.extend(b"FLdt");
         data.extend(5u32.to_le_bytes());
         data.push(156);
@@ -166,14 +265,20 @@ mod tests {
         fs::write(&project, &data).unwrap();
         let item = inspect_folder(&folder, naming::DEFAULT_TEMPLATE);
         assert_eq!(item.bpm, Some(145.0));
-        assert!(item.name_preview.as_ref().is_some_and(|n| n.contains("145")));
+        assert!(item
+            .name_preview
+            .as_ref()
+            .is_some_and(|n| n.contains("145")));
         assert_eq!(fs::read(&project).unwrap(), data);
         fs::remove_dir_all(folder).unwrap();
     }
 
     #[test]
     fn scan_reports_missing_folder() {
-        let item = inspect_folder(Path::new("this-path-should-not-exist-onece-2a17"), naming::DEFAULT_TEMPLATE);
+        let item = inspect_folder(
+            Path::new("this-path-should-not-exist-onece-2a17"),
+            naming::DEFAULT_TEMPLATE,
+        );
         assert_eq!(item.state, "invalid");
     }
 }
