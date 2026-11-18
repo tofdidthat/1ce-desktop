@@ -1,5 +1,7 @@
 # Development and merge workflow
 
+For the latest verified Windows installation, see [November 2026 local release](LOCAL-RELEASE-2026-11.md).
+
 Keep changes manageable without unnecessary PR overhead.
 
 - Default: work in **coherent batches** and merge after checks. UI, copy, docs, and small self-contained features can be committed directly to `main` where sensible.
